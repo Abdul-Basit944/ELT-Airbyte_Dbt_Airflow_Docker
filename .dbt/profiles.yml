@@ -1,0 +1,23 @@
+custom_postgres:
+  outputs:
+    dev:
+      type: postgres
+      threads: 1
+      host: host.docker.internal
+      port: 5434
+      user: postgres
+      password: secret
+      dbname: destination_db
+      schema: public
+
+    prod:
+      type: postgres
+      threads: 4
+      host: [host]
+      port: [port]
+      user: [prod_username]
+      password: [prod_password]
+      dbname: [dbname]
+      schema: [prod_schema]
+
+  target: dev

@@ -1,0 +1,112 @@
+import javax.xml.parsers.DocumentBuilder
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.xpath.XPath
+import javax.xml.xpath.XPathConstants
+import javax.xml.xpath.XPathFactory
+import org.w3c.dom.Document
+
+allprojects {
+    version = "0.1.20"
+    apply plugin: 'java-library'
+    apply plugin: 'maven-publish'
+
+    group 'io.airbyte.bulk-cdk'
+
+    // Disable spotbugs on test code, which gets annoying really quickly for @MicronautTest classes.
+    spotbugsTest {
+        enabled = false
+    }
+
+    dependencies {
+        api platform('org.jetbrains.kotlin:kotlin-bom:2.0.10')
+        api platform('org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.8.1')
+        api platform('com.fasterxml.jackson:jackson-bom:2.17.2')
+        api platform('io.micronaut:micronaut-core-bom:4.6.1')
+        api platform('org.junit:junit-bom:5.10.2')
+        api platform('org.slf4j:slf4j-bom:2.0.13')
+        api platform('org.apache.logging.log4j:log4j-bom:2.21.1')
+        api platform('org.testcontainers:testcontainers-bom:1.20.1')
+
+        api 'org.jetbrains.kotlin:kotlin-stdlib'
+        api 'com.google.dagger:dagger:2.51.1'
+        ksp 'com.google.dagger:dagger-compiler:2.52'
+
+        annotationProcessor platform('io.micronaut:micronaut-core-bom:4.6.1')
+        annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
+        annotationProcessor 'io.micronaut:micronaut-inject-kotlin'
+
+        ksp platform('io.micronaut:micronaut-core-bom:4.6.1')
+        ksp 'io.micronaut:micronaut-inject-kotlin'
+        kspTest platform('io.micronaut:micronaut-core-bom:4.6.1')
+        kspTest 'io.micronaut:micronaut-inject-kotlin'
+
+        testImplementation("io.mockk:mockk:1.13.13")
+    }
+
+    publishing {
+        publications {
+            cdk(MavenPublication) {
+                from components.java
+            }
+        }
+        // This repository is only defined and used in the context of publishing artifacts
+        // It's different from the 'airbyte-public-jars' defined in settings.gradle
+        // only in its omission of the 'public' directory.
+        // Any artifacts publish here will be available in the 'airbyte-public-jars' repo.
+        repositories {
+            maven {
+                name 'airbyte-repo'
+                url 'https://airbyte.mycloudrepo.io/repositories/airbyte-public-jars/'
+                credentials {
+                    username System.getenv('CLOUDREPO_USER')
+                    password System.getenv('CLOUDREPO_PASSWORD')
+                }
+            }
+        }
+    }
+}
+
+tasks.register('checkBuildNumber') {
+    description = "Check that the version doesn't exist"
+
+    doLast {
+        var repoUrl = "https://airbyte.mycloudrepo.io/public/repositories/airbyte-public-jars"
+        var groupIdUrl = "${repoUrl}/io/airbyte/bulk-cdk"
+        var artifactUrl = "${groupIdUrl}/bulk"
+        var metadataXmlUrl = "${artifactUrl}/maven-metadata.xml"
+
+        var connection = metadataXmlUrl.toURL().openConnection() as HttpURLConnection
+        try {
+            connection.setRequestMethod("GET")
+            connection.setDoInput(true)
+            var responseCode = connection.getResponseCode()
+            if (responseCode != 200) {
+                throw new GradleException("Unexpected HTTP response code ${responseCode} from ${metadataXmlUrl} : expected 200.")
+            }
+            InputStream responseContent = connection.inputStream
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance()
+            DocumentBuilder builder = factory.newDocumentBuilder()
+            Document doc = builder.parse(responseContent); // Replace with your XML file path
+
+            doc.getDocumentElement().normalize()
+
+            XPath xpath = XPathFactory.newInstance().newXPath()
+
+            String expression = "/metadata/versioning/latest"
+
+            String latestVersion = (String) xpath.compile(expression).evaluate(doc, XPathConstants.STRING)
+            if (version.toString() == latestVersion) {
+                throw new GradleException("Version already exist")
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+}
+
+tasks.register('bulkCdkBuild').configure {
+    dependsOn allprojects.collect {it.tasks.named('build')}
+}
+tasks.register('bulkCdkPublish').configure {
+    dependsOn allprojects.collect {it.tasks.named('publish')}
+}
