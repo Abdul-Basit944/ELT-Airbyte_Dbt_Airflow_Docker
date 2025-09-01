@@ -1,1 +1,14 @@
+# Ignore secrets and configs
 openapi_spec.yaml
+.env
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore logs
+*.log
+
+# Ignore OS/system files
+.DS_Store
+Thumbs.db
